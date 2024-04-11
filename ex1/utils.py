@@ -401,6 +401,8 @@ class SCWithObjRemoval(VerticalSeamImage):
                 - think how to force seams to pass through a mask's object..
         """
         for k in self.active_masks:
+            if k not in self.obj_masks:
+                continue
             mask = self.obj_masks[k]
             self.E[mask] = -self.mask_constant
 
@@ -421,6 +423,8 @@ class SCWithObjRemoval(VerticalSeamImage):
         """
         super().remove_seam()
         for k in self.active_masks:
+            if k not in self.obj_masks:
+                continue
             self.obj_masks[k] = self.obj_masks[k][self.mask].reshape(self.h, self.w)
 
 
