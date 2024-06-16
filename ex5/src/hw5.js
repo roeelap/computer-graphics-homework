@@ -23,19 +23,19 @@ class Ball {
 		this.z = z;
 		this.geometry = new THREE.SphereGeometry(this.radius);
 		this.material = new THREE.MeshPhongMaterial( {color: this.color} );
-		this.sphere = new THREE.Mesh( this.geometry, this.material );
-		this.sphere.applyMatrix4(new THREE.Matrix4().makeTranslation(x, y, z));
+		this.mesh = new THREE.Mesh( this.geometry, this.material );
+		this.mesh.applyMatrix4(new THREE.Matrix4().makeTranslation(x, y, z));
 	}
 
 	render(){
-		scene.add( this.sphere );
+		scene.add( this.mesh );
 	}
 }
 
 class Goal {
 	constructor(height, x, y, z, angleToBack, postRadius, postBaseRadius, netColor, postColor){
 		this.height = height;
-		this.width = height * 3;
+		this.width = this.height * 3;
 		this.x = x;
 		this.y = y;
 		this.z = z;
@@ -44,6 +44,7 @@ class Goal {
 		this.netColor = netColor;
 		this.postColor = postColor;
 		this.angleToBack = degrees_to_radians(angleToBack);
+		this.group = new THREE.Group();
 
 		this.calculateMetrics();
 		this.makeChildren();
@@ -92,50 +93,34 @@ class Goal {
 				this.netColor
 			),
 		];
+
+		this.children.forEach(child => {
+			this.group.add(child.mesh);
+		});
 	}
 
 	shrink(){
-		this.height *= 0.95
-		this.width = this.height * 3
-		this.calculateMetrics()
+        this.group.applyMatrix4(new THREE.Matrix4().makeTranslation(-this.x, -this.y, -this.z));
+		this.group.applyMatrix4(new THREE.Matrix4().makeScale(0.95, 0.95, 0.95));
+		this.group.applyMatrix4(new THREE.Matrix4().makeTranslation(this.x, this.y, this.z));
 
-		// Remove old children from the scene
-        this.children.forEach(child => {
-            if (child.mesh) {
-                scene.remove(child.mesh);
-            }
-        });
-
-		// Clear the children array
-        this.children.length = 0;
-
-		this.makeChildren();
-		this.render();
+		this.height *= 0.95;
+		this.width = this.height * 3;
+		this.calculateMetrics();
 	}
 
 	expand(){
-		this.height /= 0.95
-		this.width = this.height * 3
-		this.calculateMetrics()
+		this.group.applyMatrix4(new THREE.Matrix4().makeTranslation(-this.x, -this.y, -this.z));
+		this.group.applyMatrix4(new THREE.Matrix4().makeScale(1 / 0.95, 1 / 0.95, 1 / 0.95));
+		this.group.applyMatrix4(new THREE.Matrix4().makeTranslation(this.x, this.y, this.z));
 
-		// Remove old children from the scene
-        this.children.forEach(child => {
-            if (child.mesh) {
-                scene.remove(child.mesh);
-            }
-        });
-
-		// Clear the children array
-        this.children.length = 0;
-
-		this.makeChildren();
-		this.render();
+		this.height /= 0.95;
+		this.width = this.height * 3;
+		this.calculateMetrics();
 	}
 
 	render(){
-		for (let i = 0; i < this.children.length; i++){
-			this.children[i].render();
-		}
+		scene.add( this.group );
 	}
 }
 
@@ -174,7 +159,11 @@ class TriangularNet {
 		this.color = color;
 		this.geometry = new THREE.BufferGeometry();
 		this.geometry.setAttribute('position', new THREE.BufferAttribute(vertices, 3));
-		this.material = new THREE.MeshBasicMaterial({color: this.color, side: THREE.DoubleSide});
+
+        this.geometry.setAttribute('normal', new THREE.BufferAttribute(new Float32Array(vertices.length), 3));
+        this.geometry.computeVertexNormals();
+
+		this.material = new THREE.MeshPhongMaterial({color: this.color, side: THREE.DoubleSide});
 		this.mesh = new THREE.Mesh(this.geometry, this.material);
 	}
 
@@ -245,15 +234,11 @@ class Field {
 	}
 }
 
-// This is a sample box.
-// const geometry = new THREE.BoxGeometry( 1, 1, 1 );
-// const material = new THREE.MeshBasicMaterial( {color: 0x000000} );
-// const cube = new THREE.Mesh( geometry, material );
-// scene.add( cube );
-
 const BALL_RADIUS = 0.2;
 const GOAL_HEIGHT = BALL_RADIUS * 16
-
+const GOAL_ANGLE_TO_BACK = 45;
+const FIELD_WIDTH = 50
+const FIELD_HEIGHT = 100
 const LIGHT_GRAY = new THREE.Color( 'LightGray' );
 const WHITE = new THREE.Color( 'White' );
 const LIGHT_GREEN = new THREE.Color( 'LightGreen' );
@@ -262,13 +247,13 @@ const LIGHT_GREEN = new THREE.Color( 'LightGreen' );
 const ambientLight = new THREE.AmbientLight(WHITE);
 scene.add(ambientLight);
 
-const field = new Field(100, 50, LIGHT_GREEN);
+const field = new Field(FIELD_HEIGHT, FIELD_WIDTH, LIGHT_GREEN);
 field.render();
 
-const ball = new Ball(BALL_RADIUS, 0x000000, 0, 1, 1);
+const ball = new Ball(BALL_RADIUS, 0x000000, 0, BALL_RADIUS, 1);
 ball.render();
 
-const goal = new Goal(GOAL_HEIGHT, 0, 0, -1, 45, BALL_RADIUS/4, BALL_RADIUS/3.5, LIGHT_GRAY, WHITE);
+const goal = new Goal(GOAL_HEIGHT, 0, 0, -1, GOAL_ANGLE_TO_BACK, BALL_RADIUS/4, BALL_RADIUS/3.5, LIGHT_GRAY, WHITE);
 goal.render();
 
 // This defines the initial distance of the camera
@@ -316,10 +301,12 @@ const handleKeyDown = (e) => {
 			}
 			break;
 
+		case '+':
 		case "ArrowUp":
 			ballSpeed = Math.min(10, ballSpeed + 0.1);
 			break;
 
+		case '-':
 		case "ArrowDown":
 			ballSpeed = Math.max(0.1, ballSpeed - 0.1);
 			break;
@@ -342,20 +329,20 @@ function toggleWireframe() {
 function animateBall() {
 	if (isAnimating1) {
 		// translate to the origin
-		ball.sphere.applyMatrix4(new THREE.Matrix4().makeTranslation(-goal.x, -goal.y, -goal.z));
+		ball.mesh.applyMatrix4(new THREE.Matrix4().makeTranslation(-goal.x, -goal.y, -goal.z));
 		// rotate around x axis
-		ball.sphere.applyMatrix4(new THREE.Matrix4().makeRotationX(degrees_to_radians(-ballSpeed)));
+		ball.mesh.applyMatrix4(new THREE.Matrix4().makeRotationX(degrees_to_radians(-ballSpeed)));
 		// translate back
-		ball.sphere.applyMatrix4(new THREE.Matrix4().makeTranslation(goal.x, goal.y, goal.z));
+		ball.mesh.applyMatrix4(new THREE.Matrix4().makeTranslation(goal.x, goal.y, goal.z));
 	}
 
 	if (isAnimating2) {
 		// translate to the origin
-		ball.sphere.applyMatrix4(new THREE.Matrix4().makeTranslation(-goal.x, -goal.y, -goal.z));
+		ball.mesh.applyMatrix4(new THREE.Matrix4().makeTranslation(-goal.x, -goal.y, -goal.z));
 		// rotate around y axis
-		ball.sphere.applyMatrix4(new THREE.Matrix4().makeRotationY(degrees_to_radians(-ballSpeed)));
+		ball.mesh.applyMatrix4(new THREE.Matrix4().makeRotationY(degrees_to_radians(-ballSpeed)));
 		// translate back
-		ball.sphere.applyMatrix4(new THREE.Matrix4().makeTranslation(goal.x, goal.y, goal.z));
+		ball.mesh.applyMatrix4(new THREE.Matrix4().makeTranslation(goal.x, goal.y, goal.z));
 	}
 }
 
